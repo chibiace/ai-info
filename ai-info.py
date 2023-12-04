@@ -9,6 +9,7 @@
 from PIL import Image, ExifTags, TiffImagePlugin
 import sys
 import json
+import ast
 
 # checks to see if there is only two command line arguments, if not check if one.
 try:
@@ -72,6 +73,9 @@ else:
         for i in range(0,len(parameters[-1])):
             parameters[-1][i] = parameters[-1][i].replace(", ",",")
             parameters[-1][i] = parameters[-1][i].split(":")
+
+            if len(parameters[-1][i]) == 2:
+                parameters[-1][i][1] = parameters[-1][i][1].replace('\"',"")
             if parameters[-1][i][0] == "Size":
                 parameters[-1][i][1] = parameters[-1][i][1].split("x")
 
@@ -82,10 +86,30 @@ else:
                 prompt["parameters"].update({"height" : parameters[-1][i][1][1]})
 
             else:
-                if parameters[-1][i][1].isnumeric():
-                    parameters[-1][i][1] = int(parameters[-1][i][1])
-                #might want to check for floats here
-                prompt["parameters"].update({parameters[-1][i][0] : parameters[-1][i][1]})
+                try:
+                    if parameters[-1][i][1].isnumeric():
+                        parameters[-1][i][1] = int(parameters[-1][i][1])
+                    #might want to check for floats here
+                    prompt["parameters"].update({parameters[-1][i][0] : parameters[-1][i][1]})
+                except:
+                    if len(parameters[-1][i]) == 1:
+                        if len(parameters[-1][i-1]) == 1:
+                            values = f'{parameters[-1][i-2][1]},{parameters[-1][i-1][0]},{parameters[-1][i][0]}'.replace('\"',"")
+
+                            
+                            try:
+                                values = ast.literal_eval(values)
+                                prompt["parameters"].update({parameters[-1][i-2][0] : values})
+                            except:
+                                pass
+                                prompt["parameters"].update({parameters[-1][i-2][0] : values})
+                        else:
+                            values = f'{parameters[-1][i-1][1]},{parameters[-1][i][0]}'.replace('\"',"")
+                            try:
+                                values = ast.literal_eval(values)
+                            except:
+                                pass
+                            prompt["parameters"].update({parameters[-1][i-1][0] : values})
         
 
         
