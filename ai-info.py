@@ -10,7 +10,7 @@ from PIL import Image, ExifTags, TiffImagePlugin
 import sys
 import json
 import ast
-
+import re
 # checks to see if there is only two command line arguments, if not check if one.
 try:
     script, arg1 = sys.argv
@@ -20,6 +20,14 @@ except ValueError:
     sys.exit()
 
 
+def type_changer(value):
+    if value.isnumeric():
+        return int(value)
+    else:
+        return value
+
+def debug(text):
+    print(f'\n\033[31m{text}\033[0m\n')
 
 # tries to open the picture
 filename = arg1
@@ -43,76 +51,69 @@ else:
     if "parameters" in im.info.keys():
         parameters = im.info["parameters"]
         prompt = {"parameters": {}}
-        parameters = parameters.split("\n")
+        parameters = re.split('(Negative prompt): |(Negative Template): |(Template): |(ControlNet): |\n',parameters)
 
-        if len(parameters) == 1:
-            pass
-        if len(parameters) == 2:
-            if parameters[0].split(":",1)[0] == "Negative prompt":
-                parameters[0] = parameters[0].replace(": ",":")
-                parameters[0] = parameters[0].split(":",1)
-                
-                #neg
-                prompt["parameters"].update({parameters[0][0]:parameters[0][1].replace('"',"'")})
+
+        #removes None and new lines
+        parameters_clean_none = []
+        for i in range(0,len(parameters)):
+            if parameters[i] == None:
+                pass
+            elif parameters[i] == "":
+                pass
             else:
-                if parameters[1].split(":",1)[0] == "Steps":
-                    #pos
-                    prompt["parameters"].update({"Positive prompt":parameters[0].replace('"',"'")})
-        if len(parameters) == 3:
-            if parameters[1].split(":",1)[0] == "Negative prompt":
-                #pos
-                prompt["parameters"].update({"Positive prompt":parameters[0].replace('"',"'")})
-                parameters[1] = parameters[1].replace(": ",":")
-                parameters[1] = parameters[1].split(":",1)
-                #neg
-                prompt["parameters"].update({parameters[1][0]:parameters[1][1].replace('"',"'")})
+                parameters_clean_none.append(parameters[i])
+        parameters = parameters_clean_none
 
-        parameters[-1] = parameters[-1].replace(": ",":")
-        parameters[-1] = parameters[-1].replace(", ",",")
-        parameters[-1] = parameters[-1].split(",")
-        for i in range(0,len(parameters[-1])):
-            parameters[-1][i] = parameters[-1][i].replace(", ",",")
-            parameters[-1][i] = parameters[-1][i].split(":")
 
-            if len(parameters[-1][i]) == 2:
-                parameters[-1][i][1] = parameters[-1][i][1].replace('\"',"")
-            if parameters[-1][i][0] == "Size":
-                parameters[-1][i][1] = parameters[-1][i][1].split("x")
+        #settings field
+        parameters_settings = {}
+        for i in range(0,len(parameters)):
+            if parameters[i].split(":",1)[0] == "Steps":
+                parameters[i] = re.split(", ",parameters[i])
+                for k in parameters[i]:
+                    k = k.split(": ",1)
+                    if len(k) == 2:
+                        k[1] = type_changer(k[1])
 
-                for s in range(0,len(parameters[-1][i][1])):
-                    parameters[-1][i][1][s] = int(parameters[-1][i][1][s])
-
-                prompt["parameters"].update({"width" : parameters[-1][i][1][0]})
-                prompt["parameters"].update({"height" : parameters[-1][i][1][1]})
-
-            else:
-                try:
-                    if parameters[-1][i][1].isnumeric():
-                        parameters[-1][i][1] = int(parameters[-1][i][1])
-                    #might want to check for floats here
-                    prompt["parameters"].update({parameters[-1][i][0] : parameters[-1][i][1]})
-                except:
-                    if len(parameters[-1][i]) == 1:
-                        if len(parameters[-1][i-1]) == 1:
-                            values = f'{parameters[-1][i-2][1]},{parameters[-1][i-1][0]},{parameters[-1][i][0]}'.replace('\"',"")
-
-                            
-                            try:
-                                values = ast.literal_eval(values)
-                                prompt["parameters"].update({parameters[-1][i-2][0] : values})
-                            except:
-                                pass
-                                prompt["parameters"].update({parameters[-1][i-2][0] : values})
+                        #makes "Size" : "(widthxheight)" into two keys
+                        if k[0] == "Size":
+                            k[1] = k[1].split("x")
+                            for s in range(0,len(k[1])):
+                                k[1][s] = type_changer(k[1][s])
+                            parameters_settings.update({"width" : k[1][0]})
+                            parameters_settings.update({"height" : k[1][1]})
+                        
                         else:
-                            values = f'{parameters[-1][i-1][1]},{parameters[-1][i][0]}'.replace('\"',"")
-                            try:
-                                values = ast.literal_eval(values)
-                            except:
-                                pass
-                            prompt["parameters"].update({parameters[-1][i-1][0] : values})
-        
+                            parameters_settings.update({k[0]:k[1]})
+
+
+                parameters[i] = parameters_settings
+            
+        #builder
+        parameters_built = {}
+        for i in range(0,len(parameters)):
+            match parameters[i]:
+                case "Negative prompt":
+                    parameters_built.update({parameters[i]:parameters[i+1]})
+                case "Negative Template":
+                    parameters_built.update({parameters[i]:parameters[i+1]})
+                case "Template":
+                    parameters_built.update({parameters[i]:parameters[i+1]})
+                case "ControlNet":
+                    parameters_built.update({parameters[i]:parameters[i+1]})
+                case dict():
+                    parameters_built.update(parameters[i])
+                case _:
+                    if i == 0:
+                        parameters_built.update({"Positive prompt": parameters[i]})
+                    pass
+
 
         
+        prompt["parameters"] = parameters_built
+
+
     else:
         # exif, camera etc
         exif = im.getexif()
